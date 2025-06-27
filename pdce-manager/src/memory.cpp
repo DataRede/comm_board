@@ -1,18 +1,10 @@
 #include "memory.h"
 #include "EEPROMex.h"
-//#include "vars.h"
+#include "main.h"
 
 extern const int memBase;
-extern int highbatth;
-extern int lowbatth;
-extern int buzzerOnperiod;
-extern int buzzerOffperiod;
-extern int vpvfactor;
-extern int ipvfactor;
-extern int vbatfactor;
-extern int fw;
-extern int boot_status;
-extern int set_mode;
+
+extern DeviceConfig config;
 
 const int memBase = 512;
 
@@ -34,10 +26,10 @@ void EEPROMConfig() {
   Memo.address_mode = EEPROM.getAddress(sizeof(int));
 
   int local_fw = EEPROM.readInt(Memo.address_fw);
-  if (local_fw != 4) {
-    EEPROM.writeInt(Memo.address_fw, 4); //Add Firmware version here.
-    EEPROM.writeInt(Memo.address_hbth, 12500);
-    EEPROM.writeInt(Memo.address_lbth, 12000);
+  if (local_fw < 5) {
+    EEPROM.writeInt(Memo.address_fw, 5); //Add Firmware version here.
+    EEPROM.writeInt(Memo.address_hbth, 12600);
+    EEPROM.writeInt(Memo.address_lbth, 12200);
     EEPROM.writeInt(Memo.address_bon, 50);
     EEPROM.writeInt(Memo.address_boff, 2500);
     EEPROM.writeInt(Memo.address_vpvf, 49);
@@ -50,74 +42,94 @@ void EEPROMConfig() {
   //Checks EEPROM Values - Remove in production.
   //Make withing DEBUG TAG
   readEEPROM();
-  #ifdef DEBUG
-  Serial1.println("READ EEPROM VALUES");
-  Serial1.print("FW: ");
-  Serial1.println(fw);
-  Serial1.print("HBTTH: ");
-  Serial1.println(highbatth);
-  Serial1.print("LBTTH: ");
-  Serial1.println(lowbatth);
-  Serial1.print("BON: ");
-  Serial1.println(buzzerOnperiod);
-  Serial1.print("BOFF: ");
-  Serial1.println(buzzerOffperiod);
-  Serial1.print("VPVF: ");
-  Serial1.println(vpvfactor);
-  Serial1.print("IPVF: ");
-  Serial1.println(ipvfactor);
-  Serial1.print("VBATF: ");
-  Serial1.println(vbatfactor);
-  Serial1.print("BOOT_STATUS: ");
-  Serial1.println(boot_status);
-  Serial1.print("FUNCTION_MODE: ");
-  Serial1.println(set_mode);
-
-  Serial1.println("FINISH READING!");
-  #endif
 }
 
 void readEEPROM() {
-  highbatth = EEPROM.readInt(Memo.address_hbth);
-  lowbatth = EEPROM.readInt(Memo.address_lbth);
-  buzzerOnperiod = EEPROM.readInt(Memo.address_bon);
-  buzzerOffperiod = EEPROM.readInt(Memo.address_boff);
-  vpvfactor = EEPROM.readInt(Memo.address_vpvf);
-  ipvfactor = EEPROM.readInt(Memo.address_ipvf);
-  vbatfactor = EEPROM.readInt(Memo.address_vbatf);
-  fw = EEPROM.readInt(Memo.address_fw);
-  boot_status = EEPROM.readInt(Memo.address_boot_status);
-  set_mode = EEPROM.readInt(Memo.address_mode);
+  config.highbatth = EEPROM.readInt(Memo.address_hbth);
+  config.lowbatth = EEPROM.readInt(Memo.address_lbth);
+  config.buzzerOnperiod = EEPROM.readInt(Memo.address_bon);
+  config.buzzerOffperiod = EEPROM.readInt(Memo.address_boff);
+  config.vpvfactor = EEPROM.readInt(Memo.address_vpvf);
+  config.ipvfactor = EEPROM.readInt(Memo.address_ipvf);
+  config.vbatfactor = EEPROM.readInt(Memo.address_vbatf);
+  config.fw = EEPROM.readInt(Memo.address_fw);
+  config.boot_status = EEPROM.readInt(Memo.address_boot_status);
+  config.set_mode = EEPROM.readInt(Memo.address_mode);
 }
 
-void storeBatThresh(int highthresh, int lowthresh){
-    EEPROM.writeInt(Memo.address_hbth, highthresh);
-    EEPROM.writeInt(Memo.address_lbth, lowthresh);
-    
-    highbatth = highthresh;
-    lowbatth = lowthresh;
-    return;
+void storeConfig(JsonObject params){
+  // High battery threshold
+  if (params["params"].containsKey("hbth")) {
+    config.highbatth = params["params"]["hbth"];
+    EEPROM.updateInt(Memo.address_hbth, config.highbatth);
+  }
+
+  // Low battery threshold
+  if (params["params"].containsKey("lbth")) {
+    config.lowbatth = params["params"]["lbth"];
+    EEPROM.updateInt(Memo.address_lbth, config.lowbatth);
+  }
+
+  // Buzzer on period
+  if (params["params"].containsKey("bon")) {
+    config.buzzerOnperiod = params["params"]["bon"];
+    EEPROM.updateInt(Memo.address_bon, config.buzzerOnperiod);
+  }
+
+  // Buzzer off period
+  if (params["params"].containsKey("boff")) {
+    config.buzzerOffperiod = params["params"]["boff"];
+    EEPROM.updateInt(Memo.address_boff, config.buzzerOffperiod);
+  }
+
+  // VPV factor
+  if (params["params"].containsKey("vpvf")) {
+    config.vpvfactor = params["params"]["vpvf"];
+    EEPROM.updateInt(Memo.address_vpvf, config.vpvfactor);
+  }
+
+  // IPV factor
+  if (params["params"].containsKey("ipvf")) {
+    config.ipvfactor = params["params"]["ipvf"];
+    EEPROM.updateInt(Memo.address_ipvf, config.ipvfactor);
+  }
+
+  // VBAT factor
+  if (params["params"].containsKey("vbatf")) {
+    config.vbatfactor = params["params"]["vbatf"];
+    EEPROM.updateInt(Memo.address_vbatf, config.vbatfactor);
+  }
+
+  // Firmware version
+  if (params["params"].containsKey("fw")) {
+    config.fw = params["params"]["fw"];
+    EEPROM.updateInt(Memo.address_fw, config.fw);
+  }
+
+  // Mode
+  if (params["params"].containsKey("mode")) {
+    config.set_mode = params["params"]["mode"];
+    EEPROM.updateInt(Memo.address_mode, config.set_mode);
+  }
 }
 
 int storeBootStatus(int boot_status){
-  EEPROM.writeInt(Memo.address_boot_status, boot_status);
+  EEPROM.updateInt(Memo.address_boot_status, boot_status);
   return boot_status;
 }
 
 int readBootStatus(){
-  boot_status = EEPROM.readInt(Memo.address_boot_status);
+  config.boot_status = EEPROM.readInt(Memo.address_boot_status);
   storeBootStatus(0);
-  return boot_status;
+  return config.boot_status;
 }
 
-int storeSetMode(int set_mode){
-  EEPROM.writeInt(Memo.address_mode, set_mode);
-  return set_mode;
+void storeSetMode(int set_mode){
+  EEPROM.updateInt(Memo.address_mode, set_mode);
 }
 
-int readMode(){
-  set_mode = EEPROM.readInt(Memo.address_mode);
-  return set_mode;
+void readMode(){
+  config.set_mode = EEPROM.readInt(Memo.address_mode);
 }
 
 

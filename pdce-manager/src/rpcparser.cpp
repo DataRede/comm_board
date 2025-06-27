@@ -8,55 +8,22 @@
 extern Measure measure;
 extern struct MemStruct Memo; 
 
-extern int wakeStatus;
-extern int goingtosleep;
-extern int sendkeyStatus;
-extern int usbstatus;
-extern int buzzing;
 extern int buzzerstate;
 extern int buzzerperiod;
-extern int buzzerOnperiod;
-extern int buzzerOffperiod;
 
-extern int wakepinstatus;
-extern int coinpinstatus;
-extern int maindoorstatus;;
-extern int safedoorpinstatus;
-extern int isawakepinstatus;
-extern int extradigitalpinstatus;
-
-extern const int wakepin;
-extern const int coinpin;
-extern const int safedoorpin;
-extern const int maindoor;
-extern const int isawake;
-extern const int extradigital;
-
-extern int highbatth;
-extern int lowbatth;
-extern int vpvfactor;
-extern int ipvfactor;
-extern int vbatfactor;
-extern int vbat;
-extern int vpv;
-extern int ipv;
-extern int temperature;
+extern SensorReadings sensors;
+extern GPIOStatus gpio;
+extern DeviceConfig config;
 extern int chgstatus;
 
-extern int fw;
-extern bool messageError;
 extern int clearserialbuffer;
 extern int buzzerflag;
-extern int pdce_temp;
-extern int boot_status;
-extern int set_mode;
 extern int set_color;
-extern int fw_version;
 
 //UPDATE WHEN ADDING MORE METHODS
 JsonAdapterRPC rpc(14);
 
-const size_t capacity = JSON_OBJECT_SIZE(3) + JSON_OBJECT_SIZE(4) + 80;
+const size_t capacity = JSON_OBJECT_SIZE(3) + JSON_OBJECT_SIZE(4) + 125;
 DynamicJsonDocument rpcjsonrequest(capacity);
 DynamicJsonDocument rpcjsonresponse(capacity);
 StaticJsonDocument<256> obj;
@@ -89,8 +56,13 @@ void emptySerial1() {
 void setAlarm(JsonObject)
 {
   boolean requestedStatus = rpcjsonrequest["params"]["status"];
-  buzzerOnperiod  =  rpcjsonrequest["params"]["onPeriod"] | buzzerOnperiod;
-  buzzerOffperiod  =  rpcjsonrequest["params"]["offPeriod"] | buzzerOffperiod;
+  if (rpcjsonrequest["params"].containsKey("onPeriod")) {
+    config.buzzerOnperiod = rpcjsonrequest["params"]["onPeriod"];
+  }
+  if (rpcjsonrequest["params"].containsKey("offPeriod")) {
+    config.buzzerOffperiod = rpcjsonrequest["params"]["offPeriod"];
+  }
+
   if (requestedStatus)
   {
     buzzerflag = 1;
@@ -99,8 +71,8 @@ void setAlarm(JsonObject)
     doc["method"] = "alarm";
     JsonObject result = doc.createNestedObject("result");
     result["status"] = true;
-    result["on_time"] = buzzerOnperiod;
-    result["off_time"] = buzzerOffperiod;
+    result["on_time"] = config.buzzerOnperiod;
+    result["off_time"] = config.buzzerOffperiod;
 
     msgBegin();
     serializeJson(doc, Serial1);
@@ -128,9 +100,9 @@ void sendPower(JsonObject) {
   DynamicJsonDocument doc(125);
   doc["jsonrpc"] = "2.0";
   JsonObject result = doc.createNestedObject("result");
-  result["vpv"] = vpv;
-  result["ipv"] = ipv;
-  result["vbat"] = vbat;
+  result["vpv"] = sensors.vpv;
+  result["ipv"] = sensors.ipv;
+  result["vbat"] = sensors.vbat;
   result["status"] = chgstatus;
 
 
@@ -158,35 +130,28 @@ void notificationLed(JsonObject) {
 
 void readGpios() {
 
-    wakepinstatus = digitalRead(wakepin);
-    coinpinstatus = digitalRead(coinpin);
-    safedoorpinstatus = digitalRead(safedoorpin);
-    maindoorstatus = digitalRead(maindoor);
-    isawakepinstatus = digitalRead(isawake);
-    extradigitalpinstatus = digitalRead(extradigital);
+  gpio = measure.measureGPIOs();
 
 }
 
 void getGpio(JsonObject) {
 
-  // measure.gpios();
-  // readGpios();
+  readGpios();
   
-  // DynamicJsonDocument doc(125);
-  // doc["jsonrpc"] = "2.0";
-  // doc["method"] = "getGpio";
-  // JsonObject result = doc.createNestedObject("result");
-  // result["wp"] = wakepinstatus;
-  // result["cp"] = coinpinstatus;
-  // result["md"] = maindoorstatus;
-  // result["sdp"] = safedoorpinstatus;
-  // result["iap"] = isawakepinstatus;
-  // result["edp"] = extradigitalpinstatus;
+  DynamicJsonDocument doc(125);
+  doc["jsonrpc"] = "2.0";
+  doc["method"] = "getGpio";
+  JsonObject result = doc.createNestedObject("result");
+  result["wp"] = gpio.wake;
+  result["cp"] = gpio.coin;
+  result["psr"] = gpio.pmicStbyReq;
+  result["dp"] = gpio.door;
+  result["iap"] = gpio.isAwake;
 
-  // msgBegin();
-  // serializeJson(doc, Serial1);
-  // msgEnd();
-  // emptySerial1();
+  msgBegin();
+  serializeJson(doc, Serial1);
+  msgEnd();
+  emptySerial1();
 
 }
 
@@ -226,7 +191,7 @@ void getTemp(JsonObject) {
   doc["jsonrpc"] = "2.0";
   doc["method"] = "getTemp";
   JsonObject result = doc.createNestedObject("result");
-  result["pdce_temp"] = pdce_temp;
+  result["pdce_temp"] = sensors.temperature;
 
   msgBegin();
   serializeJson(doc, Serial1);
@@ -235,28 +200,25 @@ void getTemp(JsonObject) {
 
 }
 
-void setBatThresh(JsonObject) {
+void setConfig(JsonObject) {
 
-  int highthresh  =  rpcjsonrequest["params"]["hbth"] | highbatth;
-  int lowthresh  =  rpcjsonrequest["params"]["lbth"] | lowbatth;
+  JsonObject params = rpcjsonrequest.as<JsonObject>();;
 
-  if ((lowthresh + 100) < highthresh && lowthresh > 11000 && highthresh < 13000) {
+  storeConfig(params);
 
-    storeBatThresh(highthresh, lowthresh);
-    // EEPROM.writeInt(Memo.address_hbth, highthresh);
-    // EEPROM.writeInt(Memo.address_lbth, lowthresh);
-
-    // highbatth = highthresh;
-    // lowbatth = lowthresh;
-
-  }
-
-  DynamicJsonDocument doc(125);
+  DynamicJsonDocument doc(150);
   doc["jsonrpc"] = "2.0";
-  doc["method"] = "setBatThresh";
+  doc["method"] = "setConfig";
   JsonObject result = doc.createNestedObject("result");
-  result["hbth"] = highbatth;
-  result["lbth"] = lowbatth;
+  result["hbth"] = config.highbatth;
+  result["lbth"] = config.lowbatth;
+  result["bon"] = config.buzzerOnperiod;
+  result["boff"] = config.buzzerOffperiod;
+  result["vpvf"] = config.vpvfactor;
+  result["ipvf"] = config.ipvfactor;
+  result["vbatf"] = config.vbatfactor;
+  result["fw"] = config.fw;
+  result["mode"] = config.set_mode;
 
   msgBegin();
   serializeJson(doc, Serial1);
@@ -269,19 +231,19 @@ void getConfig(JsonObject) {
   
 
   readEEPROM();
-  DynamicJsonDocument doc(125);
+  DynamicJsonDocument doc(150);
   doc["jsonrpc"] = "2.0";
   doc["method"] = "getConfig";
   JsonObject result = doc.createNestedObject("result");
-  result["hbth"] = highbatth;
-  result["lbth"] = lowbatth;
-  result["bon"] = buzzerOnperiod;
-  result["boff"] = buzzerOffperiod;
-  result["vpvf"] = vpvfactor;
-  result["ipvf"] = ipvfactor;
-  result["vbatf"] = vbatfactor;
-  result["fw"] = fw;
-  result["mode"] = set_mode;
+  result["hbth"] = config.highbatth;
+  result["lbth"] = config.lowbatth;
+  result["bon"] = config.buzzerOnperiod;
+  result["boff"] = config.buzzerOffperiod;
+  result["vpvf"] = config.vpvfactor;
+  result["ipvf"] = config.ipvfactor;
+  result["vbatf"] = config.vbatfactor;
+  result["fw"] = config.fw;
+  result["mode"] = config.set_mode;
 
   msgBegin();
   serializeJson(doc, Serial1);
@@ -296,7 +258,7 @@ void bootStatus(JsonObject) {
   doc["jsonrpc"] = "2.0";
   doc["method"] = "bootStatus";
   JsonObject result = doc.createNestedObject("result");
-  result["bootstatus"] = boot_status;
+  result["bootstatus"] = config.boot_status;
 
   msgBegin();
   serializeJson(doc, Serial1);
@@ -329,8 +291,8 @@ void responseRPC(bool type) {
 
 void setGpios() {
 
-  int state = HIGH;
-  digitalWrite(extradigital, state);
+  //int state = HIGH;
+  //digitalWrite(extradigital, state);
 
 }
 
@@ -343,29 +305,32 @@ void qrPulse(JsonObject){
 
 void setMode(JsonObject) {
 
-  set_mode  =  rpcjsonrequest["params"]["setmode"] | set_mode;
+  if (rpcjsonrequest["params"].containsKey("setmode")) {
+    config.set_mode = rpcjsonrequest["params"]["setmode"];
+  }
 
-  storeSetMode(set_mode);
+  storeSetMode(config.set_mode);
+  readMode();
 
   DynamicJsonDocument doc(125);
   doc["jsonrpc"] = "2.0";
   doc["method"] = "setMode";
   JsonObject result = doc.createNestedObject("result");
-  result["setmode"] = set_mode;
+  result["setmode"] = config.set_mode;
 
   msgBegin();
   serializeJson(doc, Serial1);
   msgEnd();
   emptySerial1();
-
-  readMode();
   
 }
 
 
 void setColor(JsonObject) {
 
-  set_color  =  rpcjsonrequest["params"]["setcolor"] | set_color;
+  if (rpcjsonrequest["params"].containsKey("setcolor")) {
+    set_color = rpcjsonrequest["params"]["setcolor"];
+  }
 
   DynamicJsonDocument doc(125);
   doc["jsonrpc"] = "2.0";
@@ -405,7 +370,6 @@ void parseJson(){
       }
       else {
         responseRPC(true);
-        messageError = false;
       }
 
 }
@@ -419,7 +383,7 @@ void methodRegistration(){
     rpc.registerMethod("setGpio", &setGpio);
     rpc.registerMethod("getAnalog", &getAnalog);
     rpc.registerMethod("getTemp", &getTemp);
-    rpc.registerMethod("setBatThresh", &setBatThresh);
+    rpc.registerMethod("setConfig", &setConfig);
     rpc.registerMethod("getConfig", &getConfig);
     rpc.registerMethod("readCode", &qrPulse);
     rpc.registerMethod("bootStatus", &bootStatus);
