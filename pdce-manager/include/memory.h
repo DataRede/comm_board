@@ -1,13 +1,17 @@
 #ifndef MEMORY_H
 #define MEMORY_H
 
+#include "rpcparser.h"
+#include "ArduinoJson.h"
+#include "JsonAdapterRPC.h"
+
 void EEPROMConfig();
 void readEEPROM();
 int readBootStatus();
-int readMode();
+void readMode();
 int storeBootStatus(int boot_status);
-int storeSetMode(int set_mode);
-void storeBatThresh(int highthresh, int lowthresh);
+void storeSetMode(int set_mode);
+void storeConfig(JsonObject params);
 
 struct MemStruct{
     int address_fw;
